@@ -1,31 +1,35 @@
-import React from 'react';
-import logo from './logo.svg';
-import './App.css';
-import Header from './components/header';
-import Footer from './components/footer';
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Header from "./components/layout/Header";
+import Footer from "./components/layout/Footer";
+import HomePage from "./pages/HomePage";
+import AppointmentsPage from "./pages/AppointmentsPage";
+import ServicesPage from "./pages/ServicesPage";
+import ContactPage from "./pages/ContactPage";
+import TestimonialsPage from "./pages/TestimonialsPage";
 
 function App() {
   return (
-    <div className="App">
-      <Header />
-      <main style={{ minHeight: 'calc(100vh - 200px)' }}>
-        <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
-          <p>
-            Edit <code>src/App.jsx</code> and save to reload.
-          </p>
-          <a
-            className="App-link"
-            href="https://reactjs.org"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Learn React
-          </a>
-        </header>
-      </main>
-      <Footer />
-    </div>
+    <Router>
+      <div className="flex flex-col min-h-screen">
+        {/* Skip to content link for keyboard users */}
+        <a href="#main-content" className="skip-to-content">
+          Skip to main content
+        </a>
+
+        <Header />
+
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/appointments" element={<AppointmentsPage />} />
+          <Route path="/services" element={<ServicesPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/testimonials" element={<TestimonialsPage />} />
+        </Routes>
+
+        <Footer />
+      </div>
+    </Router>
   );
 }
 
