@@ -43,16 +43,22 @@ const Header = () => {
               Our Services
             </Link>
             <Link
-              to="/accessibility"
+              to="/testimonials"
               className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium"
             >
-              Accessibility
+              Patient Stories
             </Link>
             <Link
               to="/contact"
               className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium"
             >
               Contact
+            </Link>
+            <Link
+              to="/accessibility"
+              className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              Accessibility
             </Link>
           </nav>
 
