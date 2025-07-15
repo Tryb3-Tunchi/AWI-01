@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -24,6 +24,12 @@ const AppointmentsPage = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [mapKey, setMapKey] = useState(0); // Force map re-render
   const API_KEY = "f8a6d6d763bf490f916ebb74017a1952";
+
+  // Voice-to-text states
+  const [isRecording, setIsRecording] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef(null);
 
   const [bookingData, setBookingData] = useState({
     name: "",
@@ -65,6 +71,91 @@ const AppointmentsPage = () => {
     "16:00",
     "16:30",
   ];
+
+  // Voice recognition setup
+  useEffect(() => {
+    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+      setVoiceSupported(true);
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = "en-US";
+
+      recognitionRef.current.onresult = (event) => {
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          setLocation((prev) => prev + finalTranscript);
+        }
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        setIsRecording(false);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsRecording(false);
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  // Voice-to-text functions
+  const startVoiceRecording = () => {
+    if (recognitionRef.current && voiceSupported) {
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+        setIsListening(true);
+      } catch (error) {
+        console.error("Error starting voice recognition:", error);
+      }
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (recognitionRef.current && isRecording) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      setIsListening(false);
+    }
+  };
+
+  // Keyboard shortcuts for voice search
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Ctrl + V for voice search (when search input is focused)
+      if (event.ctrlKey && event.key === "v" && voiceSupported) {
+        const activeElement = document.activeElement;
+        if (
+          activeElement &&
+          activeElement.placeholder &&
+          activeElement.placeholder.includes("location")
+        ) {
+          event.preventDefault();
+          if (isRecording) {
+            stopVoiceRecording();
+          } else {
+            startVoiceRecording();
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isRecording, voiceSupported]);
 
   const handleSearch = async () => {
     if (!location) return;
@@ -257,13 +348,41 @@ const AppointmentsPage = () => {
           </div>
 
           <div className="flex gap-2 max-w-xl mx-auto">
-            <input
-              type="text"
-              placeholder="Enter your location or ZIP code"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="flex-1 px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="Enter your location or ZIP code"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full px-4 py-2 pr-12 border rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+              {voiceSupported && (
+                <button
+                  onClick={
+                    isRecording ? stopVoiceRecording : startVoiceRecording
+                  }
+                  className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full focus:ring-2 focus:ring-blue-500 transition-all ${
+                    isRecording
+                      ? "bg-red-600 text-white hover:bg-red-700 animate-pulse"
+                      : "bg-gray-200 hover:bg-gray-300"
+                  }`}
+                  aria-label={
+                    isRecording
+                      ? "Stop voice recording"
+                      : "Start voice recording"
+                  }
+                  title={isRecording ? "Stop recording" : "Voice search"}
+                >
+                  {isRecording ? "⏹️" : "🎤"}
+                </button>
+              )}
+              {isListening && (
+                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 flex items-center text-blue-600 text-sm">
+                  <div className="animate-pulse mr-1">🔴</div>
+                  Listening...
+                </div>
+              )}
+            </div>
             <button
               onClick={handleSearch}
               className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition-colors"
@@ -271,6 +390,15 @@ const AppointmentsPage = () => {
               {loading ? "Searching..." : "Search"}
             </button>
           </div>
+          {voiceSupported && (
+            <div className="text-center mt-2">
+              <p className="text-sm text-gray-600">
+                💡 <strong>Voice Search:</strong> Click the microphone icon to
+                search by voice. Try saying "hospitals near downtown" or
+                "clinics in your Area"
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Results and Map */}
@@ -441,14 +569,45 @@ const AppointmentsPage = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Notes
                     </label>
-                    <textarea
-                      name="notes"
-                      value={bookingData.notes}
-                      onChange={handleBookingInputChange}
-                      rows="3"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                      placeholder="Any special requirements or symptoms..."
-                    />
+                    <div className="relative">
+                      <textarea
+                        name="notes"
+                        value={bookingData.notes}
+                        onChange={handleBookingInputChange}
+                        rows="3"
+                        className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                        placeholder="Any special requirements or symptoms..."
+                      />
+                      {voiceSupported && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Create a temporary voice input for notes
+                            const tempRecognition =
+                              new (window.SpeechRecognition ||
+                                window.webkitSpeechRecognition)();
+                            tempRecognition.continuous = false;
+                            tempRecognition.interimResults = false;
+                            tempRecognition.lang = "en-US";
+
+                            tempRecognition.onresult = (event) => {
+                              const transcript = event.results[0][0].transcript;
+                              setBookingData((prev) => ({
+                                ...prev,
+                                notes: prev.notes + transcript,
+                              }));
+                            };
+
+                            tempRecognition.start();
+                          }}
+                          className="absolute right-2 top-2 p-2 rounded-full bg-gray-200 hover:bg-gray-300 focus:ring-2 focus:ring-blue-500 transition-all"
+                          aria-label="Add notes using voice"
+                          title="Voice input for notes"
+                        >
+                          🎤
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex gap-3">
