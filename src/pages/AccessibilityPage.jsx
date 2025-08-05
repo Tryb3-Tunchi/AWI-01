@@ -13,6 +13,7 @@ const AccessibilityPage = () => {
   const [transcribedText, setTranscribedText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState("unknown");
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
 
@@ -26,6 +27,7 @@ const AccessibilityPage = () => {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = "en-US";
+      recognitionRef.current.maxAlternatives = 1;
 
       recognitionRef.current.onresult = (event) => {
         let finalTranscript = "";
@@ -41,7 +43,8 @@ const AccessibilityPage = () => {
         }
 
         if (finalTranscript) {
-          setTranscribedText((prev) => prev + finalTranscript);
+          setTranscribedText((prev) => prev + finalTranscript + " ");
+          console.log("Transcribed text:", finalTranscript);
         }
       };
 
@@ -49,13 +52,31 @@ const AccessibilityPage = () => {
         console.error("Speech recognition error:", event.error);
         setIsRecording(false);
         setIsListening(false);
-        announceToScreenReader(`Voice recognition error: ${event.error}`);
+
+        if (event.error === "audio-capture") {
+          setMicrophonePermission("denied");
+          announceToScreenReader(
+            "Microphone access denied. Please allow microphone access in your browser settings."
+          );
+        } else {
+          announceToScreenReader(`Voice recognition error: ${event.error}`);
+        }
       };
 
       recognitionRef.current.onend = () => {
+        console.log("Speech recognition ended");
         setIsRecording(false);
         setIsListening(false);
       };
+
+      recognitionRef.current.onstart = () => {
+        console.log("Speech recognition started");
+        setIsRecording(true);
+        setIsListening(true);
+      };
+    } else {
+      console.log("Speech recognition not supported");
+      setVoiceSupported(false);
     }
   }, []);
 
@@ -110,26 +131,45 @@ const AccessibilityPage = () => {
   }, [isRecording, voiceSupported]);
 
   // Voice-to-text functions
-  const startVoiceRecording = () => {
+  const startVoiceRecording = async () => {
     if (recognitionRef.current && voiceSupported) {
       try {
+        console.log("Testing microphone access...");
+        const microphoneAccess = await testMicrophone();
+
+        if (!microphoneAccess) {
+          announceToScreenReader(
+            "Please allow microphone access to use voice recording"
+          );
+          return;
+        }
+
+        console.log("Starting voice recording...");
         recognitionRef.current.start();
-        setIsRecording(true);
-        setIsListening(true);
         announceToScreenReader("Voice recording started. Speak now.");
       } catch (error) {
         console.error("Error starting voice recognition:", error);
         announceToScreenReader("Error starting voice recording");
+        setIsRecording(false);
+        setIsListening(false);
       }
+    } else {
+      console.log("Voice recognition not available");
+      announceToScreenReader("Voice recognition not available");
     }
   };
 
   const stopVoiceRecording = () => {
     if (recognitionRef.current && isRecording) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setIsListening(false);
-      announceToScreenReader("Voice recording stopped");
+      try {
+        console.log("Stopping voice recording...");
+        recognitionRef.current.stop();
+        announceToScreenReader("Voice recording stopped");
+      } catch (error) {
+        console.error("Error stopping voice recognition:", error);
+        setIsRecording(false);
+        setIsListening(false);
+      }
     }
   };
 
@@ -142,6 +182,23 @@ const AccessibilityPage = () => {
     if (transcribedText) {
       navigator.clipboard.writeText(transcribedText);
       announceToScreenReader("Transcribed text copied to clipboard");
+    }
+  };
+
+  const testMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+      stream.getTracks().forEach((track) => track.stop()); // Stop the stream
+      announceToScreenReader("Microphone access granted");
+      return true;
+    } catch (error) {
+      console.error("Microphone test failed:", error);
+      setMicrophonePermission("denied");
+      announceToScreenReader(
+        "Microphone access denied. Please check your browser settings."
+      );
+      return false;
     }
   };
 
@@ -393,69 +450,62 @@ const AccessibilityPage = () => {
                     use Chrome, Edge, or Safari for this feature.
                   </p>
                 </div>
+              ) : microphonePermission === "denied" ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-red-800 mb-2">
+                    ❌ Microphone access denied. Please allow microphone access
+                    in your browser settings.
+                  </p>
+                  <button
+                    onClick={testMicrophone}
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                  >
+                    Test Microphone Access
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {/* Recording Controls */}
-                  <div className="flex gap-4 items-center">
+                  <div className="flex flex-col sm:flex-row gap-4 items-center">
                     <button
                       onClick={
                         isRecording ? stopVoiceRecording : startVoiceRecording
                       }
-                      className={`flex items-center px-6 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
+                      className={`flex items-center justify-center px-6 py-4 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all min-w-[200px] ${
                         isRecording
-                          ? "bg-red-600 text-white hover:bg-red-700 animate-pulse"
-                          : "bg-blue-600 text-white hover:bg-blue-700"
+                          ? "bg-red-600 text-white hover:bg-red-700 animate-pulse shadow-lg"
+                          : "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
                       }`}
                       disabled={!voiceSupported}
                       aria-label={
                         isRecording ? "Stop recording" : "Start recording"
                       }
                     >
-                      <span className="mr-2">{isRecording ? "⏹️" : "🎤"}</span>
-                      {isRecording ? "Stop Recording" : "Start Recording"}
+                      <span className="mr-2 text-xl">
+                        {isRecording ? "⏹️" : "🎤"}
+                      </span>
+                      <span className="font-medium">
+                        {isRecording ? "Stop Recording" : "Start Recording"}
+                      </span>
                     </button>
 
                     {isListening && (
-                      <div className="flex items-center text-blue-600">
+                      <div className="flex items-center text-blue-600 bg-blue-50 px-4 py-2 rounded-lg">
                         <div className="animate-pulse mr-2">🔴</div>
-                        Listening...
+                        <span className="font-medium">Listening...</span>
                       </div>
                     )}
-                  </div>
 
-                  {/* Transcribed Text Display */}
-                  {transcribedText && (
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <h4 className="font-medium">Transcribed Text:</h4>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={copyTranscribedText}
-                            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm focus:ring-2 focus:ring-blue-500"
-                            aria-label="Copy transcribed text"
-                          >
-                            📋 Copy
-                          </button>
-                          <button
-                            onClick={clearTranscribedText}
-                            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm focus:ring-2 focus:ring-blue-500"
-                            aria-label="Clear transcribed text"
-                          >
-                            🗑️ Clear
-                          </button>
-                        </div>
-                      </div>
-                      <div className="bg-gray-50 border rounded-lg p-4 min-h-[100px] max-h-[200px] overflow-y-auto">
-                        <p className="text-gray-800 whitespace-pre-wrap">
-                          {transcribedText}
-                        </p>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        💡 Tip: You can copy this text and paste it into forms
-                        like appointment booking.
-                      </p>
-                    </div>
-                  )}
+                    {!isRecording && transcribedText && (
+                      <button
+                        onClick={clearTranscribedText}
+                        className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 focus:ring-2 focus:ring-blue-500 transition-colors"
+                        aria-label="Clear transcribed text"
+                      >
+                        🗑️ Clear Text
+                      </button>
+                    )}
+                  </div>
 
                   {/* Instructions */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -470,7 +520,25 @@ const AccessibilityPage = () => {
                       </li>
                       <li>• Click "Stop Recording" when finished</li>
                       <li>• Copy the text and paste it into forms</li>
+                      <li>• Works best in Chrome, Edge, or Safari</li>
                     </ul>
+                  </div>
+
+                  {/* Test Area */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 mb-2">
+                      Test Your Voice Input:
+                    </h4>
+                    <textarea
+                      placeholder="Your transcribed text will appear here..."
+                      value={transcribedText}
+                      onChange={(e) => setTranscribedText(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[100px] resize-none"
+                      aria-label="Transcribed text area"
+                    />
+                    <p className="text-xs text-gray-600 mt-2">
+                      💡 You can edit the text here before copying it to forms.
+                    </p>
                   </div>
                 </div>
               )}

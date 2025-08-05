@@ -1,7 +1,10 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 
 const Sidebar = ({ isOpen, onClose }) => {
+  const { currentUser, userRole } = useAuth();
+
   return (
     <>
       {/* Overlay */}
@@ -96,6 +99,15 @@ const Sidebar = ({ isOpen, onClose }) => {
                   onClick={onClose}
                 >
                   Contact Us
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/admin"
+                  className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onClick={onClose}
+                >
+                  Admin Portal
                 </Link>
               </li>
             </ul>

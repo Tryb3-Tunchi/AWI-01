@@ -3,6 +3,7 @@ import axios from "axios";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { createAppointment } from "../services/appointmentService";
 
 // Leaflet marker fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -21,6 +22,7 @@ const AppointmentsPage = () => {
   const [type, setType] = useState("hospital");
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [mapKey, setMapKey] = useState(0); // Force map re-render
   const API_KEY = "f8a6d6d763bf490f916ebb74017a1952";
@@ -29,6 +31,7 @@ const AppointmentsPage = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState("unknown");
   const recognitionRef = useRef(null);
 
   const [bookingData, setBookingData] = useState({
@@ -102,6 +105,10 @@ const AppointmentsPage = () => {
         console.error("Speech recognition error:", event.error);
         setIsRecording(false);
         setIsListening(false);
+
+        if (event.error === "audio-capture") {
+          setMicrophonePermission("denied");
+        }
       };
 
       recognitionRef.current.onend = () => {
@@ -111,10 +118,32 @@ const AppointmentsPage = () => {
     }
   }, []);
 
+  // Test microphone access
+  const testMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch (error) {
+      console.error("Microphone test failed:", error);
+      setMicrophonePermission("denied");
+      return false;
+    }
+  };
+
   // Voice-to-text functions
-  const startVoiceRecording = () => {
+  const startVoiceRecording = async () => {
     if (recognitionRef.current && voiceSupported) {
       try {
+        // Test microphone access first
+        const microphoneAccess = await testMicrophone();
+
+        if (!microphoneAccess) {
+          alert("Please allow microphone access to use voice recording");
+          return;
+        }
+
         recognitionRef.current.start();
         setIsRecording(true);
         setIsListening(true);
@@ -198,18 +227,37 @@ const AppointmentsPage = () => {
     }));
   };
 
-  const handleBookingSubmit = (e) => {
+  const handleBookingSubmit = async (e) => {
     e.preventDefault();
-    console.log("Appointment booked:", {
-      ...bookingData,
-      facility: selectedPlace,
-    });
-    setIsSubmitted(true);
+    setLoading(true);
 
-    setTimeout(() => {
-      setIsSubmitted(false);
+    try {
+      console.log("Selected place properties:", selectedPlace.properties);
+
+      const appointmentData = {
+        ...bookingData,
+        facility: {
+          name: selectedPlace.properties.name || "Unknown Facility",
+          address:
+            selectedPlace.properties.address_line1 || "Address not available",
+          city: selectedPlace.properties.city || "City not available",
+          coordinates: {
+            lat: selectedPlace.properties.lat || 0,
+            lon: selectedPlace.properties.lon || 0,
+          },
+        },
+      };
+
+      console.log("Appointment data being sent:", appointmentData);
+
+      const appointmentId = await createAppointment(appointmentData);
+      console.log("Appointment booked successfully with ID:", appointmentId);
+
+      // Close booking form immediately
       setShowBookingForm(false);
       setSelectedPlace(null);
+
+      // Reset form data
       setBookingData({
         name: "",
         email: "",
@@ -219,7 +267,15 @@ const AppointmentsPage = () => {
         service: "",
         notes: "",
       });
-    }, 3000);
+
+      // Show success modal
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error("Error booking appointment:", error);
+      alert("Failed to book appointment. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getMinDate = () => {
@@ -274,29 +330,6 @@ const AppointmentsPage = () => {
       </MapContainer>
     );
   };
-
-  if (isSubmitted) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12">
-        <div className="max-w-2xl mx-auto px-4">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
-            <div className="text-green-600 text-6xl mb-4">✓</div>
-            <h1 className="text-2xl font-bold text-green-800 mb-4">
-              Appointment Booked Successfully!
-            </h1>
-            <p className="text-green-700 mb-4">
-              Thank you for booking your appointment at{" "}
-              {selectedPlace?.properties.name}. We've sent a confirmation email
-              to {bookingData.email}.
-            </p>
-            <p className="text-green-600">
-              Please arrive 10 minutes before your scheduled time.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4">
@@ -446,8 +479,8 @@ const AppointmentsPage = () => {
 
         {/* Booking Form Modal */}
         {showBookingForm && selectedPlace && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[9999]">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto relative">
               <div className="p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-xl font-semibold">Book Appointment</h3>
@@ -613,9 +646,36 @@ const AppointmentsPage = () => {
                   <div className="flex gap-3">
                     <button
                       type="submit"
-                      className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+                      disabled={loading}
+                      className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Book Appointment
+                      {loading ? (
+                        <span className="flex items-center justify-center">
+                          <svg
+                            className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          Booking...
+                        </span>
+                      ) : (
+                        "Book Appointment"
+                      )}
                     </button>
                     <button
                       type="button"
@@ -626,6 +686,44 @@ const AppointmentsPage = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success Modal */}
+        {showSuccessModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[9999]">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
+              <div className="text-green-600 text-6xl mb-4">✓</div>
+              <h3 className="text-2xl font-bold text-green-800 mb-4">
+                Appointment Booked Successfully!
+              </h3>
+              <p className="text-green-700 mb-4">
+                Thank you for booking your appointment. You will receive a
+                confirmation email shortly.
+              </p>
+              <p className="text-green-600 mb-6">
+                Please arrive 10 minutes before your scheduled time.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    // Optionally refresh the page or reset search
+                    setPlaces([]);
+                    setLocation("");
+                  }}
+                  className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700"
+                >
+                  Book Another Appointment
+                </button>
+                <button
+                  onClick={() => setShowSuccessModal(false)}
+                  className="bg-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-400"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
