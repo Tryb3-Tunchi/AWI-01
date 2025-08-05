@@ -11,6 +11,7 @@ const VoiceToText = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState("unknown");
   const [transcribedText, setTranscribedText] = useState("");
   const recognitionRef = useRef(null);
 
@@ -51,6 +52,10 @@ const VoiceToText = ({
         console.error("Speech recognition error:", event.error);
         setIsRecording(false);
         setIsListening(false);
+
+        if (event.error === "audio-capture") {
+          setMicrophonePermission("denied");
+        }
       };
 
       recognitionRef.current.onend = () => {
@@ -60,9 +65,31 @@ const VoiceToText = ({
     }
   }, [transcribedText, onTextChange]);
 
-  const startVoiceRecording = () => {
+  // Test microphone access
+  const testMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch (error) {
+      console.error("Microphone test failed:", error);
+      setMicrophonePermission("denied");
+      return false;
+    }
+  };
+
+  const startVoiceRecording = async () => {
     if (recognitionRef.current && voiceSupported) {
       try {
+        // Test microphone access first
+        const microphoneAccess = await testMicrophone();
+
+        if (!microphoneAccess) {
+          alert("Please allow microphone access to use voice recording");
+          return;
+        }
+
         recognitionRef.current.start();
         setIsRecording(true);
         setIsListening(true);
@@ -108,6 +135,21 @@ const VoiceToText = ({
     return (
       <div className={`text-sm text-gray-500 ${className}`}>
         Voice recognition not supported in this browser
+      </div>
+    );
+  }
+
+  if (microphonePermission === "denied") {
+    return (
+      <div className={`text-sm text-red-500 ${className}`}>
+        ❌ Microphone access denied. Please allow microphone access in your
+        browser settings.
+        <button
+          onClick={testMicrophone}
+          className="ml-2 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+        >
+          Test Access
+        </button>
       </div>
     );
   }

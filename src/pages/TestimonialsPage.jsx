@@ -14,6 +14,7 @@ const TestimonialsPage = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState("unknown");
   const [recordingField, setRecordingField] = useState(null); // Track which field is being recorded
   const recognitionRef = useRef(null);
 
@@ -51,6 +52,10 @@ const TestimonialsPage = () => {
         setIsRecording(false);
         setIsListening(false);
         setRecordingField(null);
+
+        if (event.error === "audio-capture") {
+          setMicrophonePermission("denied");
+        }
       };
 
       recognitionRef.current.onend = () => {
@@ -61,10 +66,32 @@ const TestimonialsPage = () => {
     }
   }, [recordingField]);
 
+  // Test microphone access
+  const testMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch (error) {
+      console.error("Microphone test failed:", error);
+      setMicrophonePermission("denied");
+      return false;
+    }
+  };
+
   // Voice recording functions
-  const startVoiceRecording = (fieldName) => {
+  const startVoiceRecording = async (fieldName) => {
     if (recognitionRef.current && voiceSupported) {
       try {
+        // Test microphone access first
+        const microphoneAccess = await testMicrophone();
+
+        if (!microphoneAccess) {
+          alert("Please allow microphone access to use voice recording");
+          return;
+        }
+
         setRecordingField(fieldName);
         recognitionRef.current.start();
         setIsRecording(true);

@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 import Sidebar from "./Sidebar";
 
 const Header = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { currentUser, userRole } = useAuth();
 
   return (
     <header className="bg-white shadow-md" role="banner">
@@ -59,6 +61,12 @@ const Header = () => {
               className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium"
             >
               Accessibility
+            </Link>
+            <Link
+              to="/admin"
+              className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              Admin
             </Link>
           </nav>
 
